@@ -107,10 +107,10 @@ function MQTT_updateServicesTable(device) {
             if (variable.Monitor) {
                 html += "checked";
             } 
-            html += ' onchange="MQTT_pushChanges(' + nb + ');"></td>';
+            html += ' onchange="MQTT_pushChanges(' + nb + ',' + device + ');"></td>';
             html += '<td style="padding-left: 10px" id="Service' + nb + '">' + s + '</td>';
             html += '<td style="padding-left: 10px" id="Variable' + nb + '">' + v + '</td>';
-            html += '<td><input id="Label' + nb + '" type="text" name="Label' + nb + '" value="' + variable.Label + '" onchange="MQTT_pushChanges(' + nb + ');" style="width:100%"></td>';
+            html += '<td><input id="Label' + nb + '" type="text" name="Label' + nb + '" value="' + variable.Label + '" onchange="MQTT_pushChanges(' + nb + ',' + device + ');" style="width:100%"></td>';
             html += '</tr>';
             nb++;
 
@@ -164,7 +164,7 @@ function MQTT_filterServicesTable() {
 
 }
 
-function MQTT_pushChanges(line) {
+function MQTT_pushChanges(line, device) {
 
     var selected = jQuery("#SelectServiceVariable" + line)[0].checked;
     var service = jQuery("#Service" + line)[0].innerHTML;
@@ -195,14 +195,17 @@ function MQTT_pushChanges(line) {
 
         }
     }
+	
+	set_device_state(device, MQTT.SID, "mqttWatches", JSON.stringify(MQTT.watches), 0);
+	jQuery("#SavedLabel")[0].innerHTML = "Settings Saved";
 
 }
 
 function MQTT_save(device) {
 
-    set_device_state(device, MQTT.SID, "mqttWatches", JSON.stringify(MQTT.watches), 1);
+    //set_device_state(device, MQTT.SID, "mqttWatches", JSON.stringify(MQTT.watches), 0);
 
-    jQuery("#SavedLabel")[0].innerHTML = "Settings Saved";
+    //jQuery("#SavedLabel")[0].innerHTML = "Settings Saved";
 
     luupRestart();
 
@@ -253,22 +256,26 @@ function MQTT_updateDeviceAliasTable(device) {
     var nb = 0;
     //loop through each device
     for (i in devices) {
+	
+		if (typeof devices[i].id !== 'undefined') {
 
-        html += '<tr align="left">';
-        html += '<td style="min-width: 25px; text-align: center;"><input id="SelectAlias' + nb + '" type="checkbox" value="' + nb + '" ';
-        if (MQTT.alias[devices[i].id]) {
-            html += "checked";
-        }
-        html += ' onchange="MQTT_pushAliasChanges(' + nb + ');"></td>';
-        html += '<td style="padding-left: 10px" id="ID' + nb + '">' + devices[i].id + '</td>';
-        html += '<td style="padding-left: 10px" id="Name' + nb + '">' + devices[i].name + '</td>';
-        if (MQTT.alias[devices[i].id]) {
-            html += '<td><input id="Label' + nb + '" type="text" name="Label' + nb + '" value="' + MQTT.alias[devices[i].id] + '" onchange="MQTT_pushAliasChanges(' + nb + ');" style="width:100%"></td>';
-        } else {
-            html += '<td><input id="Label' + nb + '" type="text" name="Label' + nb + '" value="' + devices[i].name + '" onchange="MQTT_pushAliasChanges(' + nb + ');" style="width:100%"></td>';
-        }
-        html += '</tr>';
-        nb++;
+			html += '<tr align="left">';
+			html += '<td style="min-width: 25px; text-align: center;"><input id="SelectAlias' + nb + '" type="checkbox" value="' + nb + '" ';
+			if (MQTT.alias[devices[i].id]) {
+				html += "checked";
+			}
+			html += ' onchange="MQTT_pushAliasChanges(' + nb + ',' + device + ');"></td>';
+			html += '<td style="padding-left: 10px" id="ID' + nb + '">' + devices[i].id + '</td>';
+			html += '<td style="padding-left: 10px" id="Name' + nb + '">' + devices[i].name + '</td>';
+			if (MQTT.alias[devices[i].id]) {
+				html += '<td><input id="Label' + nb + '" type="text" name="Label' + nb + '" value="' + MQTT.alias[devices[i].id] + '" onchange="MQTT_pushAliasChanges(' + nb + ',' + device + ');" style="width:100%"></td>';
+			} else {
+				html += '<td><input id="Label' + nb + '" type="text" name="Label' + nb + '" value="' + devices[i].name + '" onchange="MQTT_pushAliasChanges(' + nb + ',' + device + ');" style="width:100%"></td>';
+			}
+			html += '</tr>';
+			nb++;
+		
+		}
 
     }
 
@@ -278,7 +285,7 @@ function MQTT_updateDeviceAliasTable(device) {
 
 }
 
-function MQTT_pushAliasChanges(line){
+function MQTT_pushAliasChanges(line, device){
 
     var selected = jQuery("#SelectAlias" + line)[0].checked;
     var id = jQuery("#ID" + line)[0].innerHTML;
@@ -301,14 +308,17 @@ function MQTT_pushAliasChanges(line){
             delete MQTT.alias[id];
         }
     }
+	
+	set_device_state(device, MQTT.SID, "mqttAlias", JSON.stringify(MQTT.alias), 0);
+    jQuery("#SavedAliasLabel")[0].innerHTML = "Settings Saved";
 
 }
 
 function MQTT_saveAlias(device) {
 
-    set_device_state(device, MQTT.SID, "mqttAlias", JSON.stringify(MQTT.alias), 1);
+    //set_device_state(device, MQTT.SID, "mqttAlias", JSON.stringify(MQTT.alias), 0);
 
-    jQuery("#SavedAliasLabel")[0].innerHTML = "Settings Saved";
+    //jQuery("#SavedAliasLabel")[0].innerHTML = "Settings Saved";
 
     luupRestart();
 

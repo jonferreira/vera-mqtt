@@ -48,9 +48,9 @@ function watchSensorVariable(lul_device, lul_service, lul_variable, lul_value_ol
 	local topic = ""
 
 	if (alias[tostring(lul_device)]) then
-		topic = "Vera/Events/"..alias[tostring(lul_device)]
+		topic = mqttVeraIdentifier.."/Events/"..alias[tostring(lul_device)]
 	else
-		topic = "Vera/Events/"..lul_device
+		topic = mqttVeraIdentifier.."/Events/"..lul_device
 	end
 
 	publishMessage(topic, payload)
@@ -103,15 +103,16 @@ end
 -- ------------------------------------------------------------------
 -- Connect to MQTT
 -- ------------------------------------------------------------------
-	function connectToMqtt()
+function connectToMqtt()
 	luup.log(SENSOR_MQTT_LOG_NAME .. "Connect to MQTT", 1)
 	-- TODO: Add checks for IP and Port	
 	mqttServerPort = tonumber(mqttServerPort)
 	mqttClient = MQTT.client.create(mqttServerIp, mqttServerPort)
 	mqttClient.KEEP_ALIVE_TIME = 3600
 --	local result = mqttClient:connect("VeraController")
-	local result = mqttClient:connect("VeraController", "Will_Topic/", 2, 1, "testament_msg")
+	local result = mqttClient:connect(mqttVeraIdentifier, "Will_Topic/", 2, 1, "testament_msg")
 	if (result ~=nil and result == "client:connect(): Couldn't open MQTT broker connection") then
+		luup.log(result)
 		setConnectionStatus(false)
 		luup.call_delay('connectToMqtt', 10, "")
 	else
@@ -163,7 +164,7 @@ function publishPing()
 		-- Retry to ping again
 		mqttClient:handler()
 	end
-	luup.call_delay('publishPing', 50, "", false)
+	luup.call_delay('publishPing', 30, "", false)
 end
 
 -- ------------------------------------------------------------------
@@ -237,11 +238,18 @@ function startup(lul_device)
 		mqttLastMessage = ""
 		luup.variable_set(SERVICE_ID, "mqttLastMessage", mqttLastMessage, DEVICE_ID)
 	end
+	
+	mqttVeraIdentifier = luup.variable_get(SERVICE_ID, "mqttVeraIdentifier", DEVICE_ID)
+	if(mqttVeraIdentifier == nil) then
+		mqttVeraIdentifier = "Vera"
+		luup.variable_set(SERVICE_ID, "mqttVeraIdentifier", mqttVeraIdentifier, DEVICE_ID)
+	end
 
 	if (mqttServerIp ~= "0.0.0.0") then
 		connectToMqtt()
 		luup.call_delay('publishPing', 15, "", false)
 	end
+	
 	if (mqttServerConnected == "1") then
 		registerWatches()
 	end
