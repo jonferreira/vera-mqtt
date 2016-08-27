@@ -12,6 +12,8 @@ local WATCH = {}
 
 local mqttServerIp = nil
 local mqttServerPort = 0
+local mqttServerUser = nil
+local mqttServerPassword = nil
 local mqttServerConnected = "0"
 local mqttWatches = "{}"
 local mqttAlias = "{}"
@@ -113,6 +115,10 @@ function connectToMqtt()
 	mqttServerPort = tonumber(mqttServerPort)
 	mqttClient = MQTT.client.create(mqttServerIp, mqttServerPort)
 	mqttClient.KEEP_ALIVE_TIME = 3600
+        -- If a username and password are provided, set the broker authentication
+        if (mqttServerUser ~= "" and mqttServerPassword ~= "" ) then
+           mqttClient:auth(mqttUsername, mqttPassword)
+        end
 --	local result = mqttClient:connect("VeraController")
 	local result = mqttClient:connect(mqttVeraIdentifier, "Will_Topic/", 2, 1, "testament_msg")
 	if (result ~=nil and result == "client:connect(): Couldn't open MQTT broker connection") then
@@ -217,6 +223,18 @@ function startup(lul_device)
 	if(mqttServerPort == nil) then
 		mqttServerPort = "0"
 		luup.variable_set(SERVICE_ID, "mqttServerPort", mqttServerPort, DEVICE_ID)
+	end
+
+	mqttServerUser = luup.variable_get(SERVICE_ID, "mqttServerUser", DEVICE_ID)
+	if(mqttServerUser == nil) then
+		mqttServerUser = ""
+		luup.variable_set(SERVICE_ID, "mqttServerUser", mqttServerUser, DEVICE_ID)
+	end
+
+	mqttServerPassword = luup.variable_get(SERVICE_ID, "mqttServerPassword", DEVICE_ID)
+	if(mqttServerPassword == nil) then
+		mqttServerPassword = ""
+		luup.variable_set(SERVICE_ID, "mqttServerPassword", mqttServerPassword, DEVICE_ID)
 	end
 
 	mqttWatches = luup.variable_get(SERVICE_ID, "mqttWatches", DEVICE_ID)
