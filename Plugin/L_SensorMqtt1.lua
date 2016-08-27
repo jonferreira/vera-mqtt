@@ -41,6 +41,10 @@ function watchSensorVariable(lul_device, lul_service, lul_variable, lul_value_ol
 	local variableUpdate = {}
 	variableUpdate.Time = os.time()
 	variableUpdate.DeviceId = lul_device
+        variableUpdate.DeviceName = luup.devices[lul_device].description
+        variableUpdate.DeviceType = luup.devices[lul_device].device_type
+        variableUpdate.RoomId = luup.devices[lul_device].room_num
+        variableUpdate.RoomName = luup.rooms[variableUpdate.RoomId] or "No Room"
 	variableUpdate[watches[lul_service][lul_variable]] = lul_value_new
 	variableUpdate["Old" .. watches[lul_service][lul_variable]] = lul_value_old
 
