@@ -1,10 +1,7 @@
-
-module("mqtt_library", package.seeall)
-
 ---
--- @module mqtt_library
+-- @module paho.mqtt
 -- ~~~~~~~~~~~~~~~~
--- Version: 0.2 2012-06-01
+-- Version: 0.3 2014-10-06
 -- -------------------------------------------------------------------------- --
 -- Copyright (c) 2011-2012 Geekscape Pty. Ltd.
 -- All rights reserved. This program and the accompanying materials
@@ -13,7 +10,8 @@ module("mqtt_library", package.seeall)
 -- http://www.eclipse.org/legal/epl-v10.html
 --
 -- Contributors:
---    Andy Gelme - Initial API and implementation
+--    Andy Gelme    - Initial API and implementation
+--    Kevin KIN-FOO - Authentication and rockspec
 -- -------------------------------------------------------------------------- --
 --
 -- Documentation
@@ -53,12 +51,12 @@ module("mqtt_library", package.seeall)
 -- * When a PINGREQ is sent, must check for a PINGRESP, within KEEP_ALIVE_TIME..
 --   * Otherwise, fail the connection.
 -- * When connecting, wait for CONACK, until KEEP_ALIVE_TIME, before failing.
--- * Should client:connect() be asynchronous with a callback ?
+-- * Should MQTT.client:connect() be asynchronous with a callback ?
 -- * Review all public APIs for asynchronous callback behaviour.
 -- * Implement parse PUBACK message.
 -- * Handle failed subscriptions, i.e no subscription acknowledgement received.
 -- * Fix problem when KEEP_ALIVE_TIME is short, e.g. mqtt_publish -k 1
---     client:handler(): Message length mismatch
+--     MQTT.client:handler(): Message length mismatch
 -- - On socket error, optionally try reconnection to MQTT server.
 -- - Consider use of assert() and pcall() ?
 -- - Only expose public API functions, don't expose internal API functions.
@@ -82,79 +80,81 @@ if (not isPsp()) then
 --require("ssl")
 end
 
----
--- @field [parent = #mqtt_library] utility#utility Utility
---
-Utility = require("utility")
+local MQTT = {}
 
 ---
--- @field [parent = #mqtt_library] #number VERSION
+-- @field [parent = #paho.mqtt] mqtt.utility#utility Utility
 --
-VERSION = 0x03
+MQTT.Utility = require "utility"
 
 ---
--- @field [parent = #mqtt_library] #boolean ERROR_TERMINATE
+-- @field [parent = #paho.mqtt] #number VERSION
 --
-ERROR_TERMINATE = false      -- Message handler errors terminate process ?
+MQTT.VERSION = 0x03
 
 ---
--- @field [parent = #mqtt_library] #string DEFAULT_BROKER_HOSTNAME
+-- @field [parent = #paho.mqtt] #boolean ERROR_TERMINATE
 --
-DEFAULT_BROKER_HOSTNAME = "m2m.eclipse.org"
+MQTT.ERROR_TERMINATE = false      -- Message handler errors terminate process ?
+
+---
+-- @field [parent = #paho.mqtt] #string DEFAULT_BROKER_HOSTNAME
+--
+MQTT.DEFAULT_BROKER_HOSTNAME = "m2m.eclipse.org"
 
 ---
 -- An MQTT client
 -- @type client
 
 ---
--- @field [parent = #mqtt_library] #client client
+-- @field [parent = #paho.mqtt] #client client
 --
-client = {}
-client.__index = client
+MQTT.client = {}
+MQTT.client.__index = MQTT.client
 
 ---
 -- @field [parent = #client] #number DEFAULT_PORT
 --
-client.DEFAULT_PORT       = 1883
+MQTT.client.DEFAULT_PORT       = 1883
 
 ---
 -- @field [parent = #client] #number KEEP_ALIVE_TIME
 --
-client.KEEP_ALIVE_TIME    =   60  -- seconds (maximum is 65535)
+MQTT.client.KEEP_ALIVE_TIME    =   60  -- seconds (maximum is 65535)
 
 ---
 -- @field [parent = #client] #number MAX_PAYLOAD_LENGTH
 --
-client.MAX_PAYLOAD_LENGTH = 268435455 -- bytes
+MQTT.client.MAX_PAYLOAD_LENGTH = 268435455 -- bytes
 
 -- MQTT 3.1 Specification: Section 2.1: Fixed header, Message type
 
 ---
--- @field [parent = #mqtt_library] message
+-- @field [parent = #paho.mqtt] message
 --
-messageType = {}
-messageType.TYPE_RESERVED    = 0x00
-messageType.TYPE_CONNECT     = 0x01
-messageType.TYPE_CONACK      = 0x02
-messageType.TYPE_PUBLISH     = 0x03
-messageType.TYPE_PUBACK      = 0x04
-messageType.TYPE_PUBREC      = 0x05
-messageType.TYPE_PUBREL      = 0x06
-messageType.TYPE_PUBCOMP     = 0x07
-messageType.TYPE_SUBSCRIBE   = 0x08
-messageType.TYPE_SUBACK      = 0x09
-messageType.TYPE_UNSUBSCRIBE = 0x0a
-messageType.TYPE_UNSUBACK    = 0x0b
-messageType.TYPE_PINGREQ     = 0x0c
-messageType.TYPE_PINGRESP    = 0x0d
-messageType.TYPE_DISCONNECT  = 0x0e
-messageType.TYPE_RESERVED    = 0x0f
+MQTT.message = {}
+MQTT.message.TYPE_RESERVED    = 0x00
+MQTT.message.TYPE_CONNECT     = 0x01
+MQTT.message.TYPE_CONACK      = 0x02
+MQTT.message.TYPE_PUBLISH     = 0x03
+MQTT.message.TYPE_PUBACK      = 0x04
+MQTT.message.TYPE_PUBREC      = 0x05
+MQTT.message.TYPE_PUBREL      = 0x06
+MQTT.message.TYPE_PUBCOMP     = 0x07
+MQTT.message.TYPE_SUBSCRIBE   = 0x08
+MQTT.message.TYPE_SUBACK      = 0x09
+MQTT.message.TYPE_UNSUBSCRIBE = 0x0a
+MQTT.message.TYPE_UNSUBACK    = 0x0b
+MQTT.message.TYPE_PINGREQ     = 0x0c
+MQTT.message.TYPE_PINGRESP    = 0x0d
+MQTT.message.TYPE_DISCONNECT  = 0x0e
+MQTT.message.TYPE_RESERVED    = 0x0f
 
 -- MQTT 3.1 Specification: Section 3.2: CONACK acknowledge connection errors
 -- http://mqtt.org/wiki/doku.php/extended_connack_codes
 
-CONACK = {}
-CONACK.error_message = {          -- CONACK return code used as the index
+MQTT.CONACK = {}
+MQTT.CONACK.error_message = {          -- CONACK return code used as the index
   "Unacceptable protocol version",
   "Identifer rejected",
   "Server unavailable",
@@ -175,7 +175,7 @@ CONACK.error_message = {          -- CONACK return code used as the index
 -- @function [parent = #client] create
 -- @return #client created client
 --
-function client.create(                                      -- Public API
+function MQTT.client.create(                                      -- Public API
   hostname,  -- string:   Host name or address of the MQTT broker
   port,      -- integer:  Port number of the MQTT broker (default: 1883)
   callback)  -- function: Invoked when subscribed topic messages received
@@ -183,11 +183,11 @@ function client.create(                                      -- Public API
 
   local mqtt_client = {}
 
-  setmetatable(mqtt_client, client)
+  setmetatable(mqtt_client, MQTT.client)
 
   mqtt_client.callback = callback  -- function(topic, payload)
   mqtt_client.hostname = hostname
-  mqtt_client.port     = port or client.DEFAULT_PORT
+  mqtt_client.port     = port or MQTT.client.DEFAULT_PORT
 
   mqtt_client.connected     = false
   mqtt_client.destroyed     = false
@@ -199,7 +199,24 @@ function client.create(                                      -- Public API
   return(mqtt_client)
 end
 
---- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
+--------------------------------------------------------------------------------
+-- Specify username and password before #client.connect
+--
+-- If called with empty _username_ or _password_, connection flags will be set
+-- but no string will be appended to payload.
+--
+-- @function [parent = #client] auth
+-- @param self
+-- @param #string username Name of the user who is connecting. It is recommended
+--                         that user names are kept to 12 characters.
+-- @param #string password Password corresponding to the user who is connecting.
+function MQTT.client.auth(self, username, password)
+  -- When no string is provided, remember current call to set flags
+  self.username = username or true
+  self.password = password or true
+end
+
+--------------------------------------------------------------------------------
 -- Transmit MQTT Client request a connection to an MQTT broker (server).
 -- MQTT 3.1 Specification: Section 3.1: CONNECT
 -- @param self
@@ -210,7 +227,7 @@ end
 -- @param #string will_message Last will and testament message
 -- @function [parent = #client] connect
 --
-function client:connect(                                     -- Public API
+function MQTT.client:connect(                                     -- Public API
   identifier,    -- string: MQTT client identifier (maximum 23 characters)
   will_topic,    -- string: Last will and testament topic
   will_qos,      -- byte:   Last will and testament Quality Of Service
@@ -219,26 +236,26 @@ function client:connect(                                     -- Public API
                  -- return: nil or error message
 
   if (self.connected) then
-    return("client:connect(): Already connected")
+    return("MQTT.client:connect(): Already connected")
   end
 
-  Utility.debug("client:connect(): " .. identifier)
+  MQTT.Utility.debug("MQTT.client:connect(): " .. identifier)
 
   self.socket_client = socket.connect(self.hostname, self.port)
 
   if (self.socket_client == nil) then
-    return("client:connect(): Couldn't open MQTT broker connection")
+    return("MQTT.client:connect(): Couldn't open MQTT broker connection")
   end
 
-  Utility.socket_wait_connected(self.socket_client)
+  MQTT.Utility.socket_wait_connected(self.socket_client)
 
   self.connected = true
 
 -- Construct CONNECT variable header fields (bytes 1 through 9)
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   local payload
-  payload = client.encode_utf8("MQIsdp")
-  payload = payload .. string.char(VERSION)
+  payload = MQTT.client.encode_utf8("MQIsdp")
+  payload = payload .. string.char(MQTT.VERSION)
 
 -- Connect flags (byte 10)
 -- ~~~~~~~~~~~~~
@@ -250,34 +267,49 @@ function client:connect(                                     -- Public API
 -- bit    1: Clean session =  1
 -- bit    0: Unused        =  0
 
+  local username = self.username and 0x80 or 0
+  local password = self.password and 0x40 or 0
+  local flags    = username + password
+
   if (will_topic == nil) then
-    payload = payload .. string.char(0x02)       -- Clean session, no last will
+    -- Clean session, no last will
+    flags = flags + 0x02
   else
-    local flags
-    flags = Utility.shift_left(will_retain, 5)
-    flags = flags + Utility.shift_left(will_qos, 3) + 0x06
-    payload = payload .. string.char(flags)
+    flags = flags + MQTT.Utility.shift_left(will_retain, 5)
+    flags = flags + MQTT.Utility.shift_left(will_qos, 3)
+    -- Last will and clean session
+    flags = flags + 0x04 + 0x02
   end
+  payload = payload .. string.char(flags)
 
 -- Keep alive timer (bytes 11 LSB and 12 MSB, unit is seconds)
 -- ~~~~~~~~~~~~~~~~~
-  payload = payload .. string.char(math.floor(client.KEEP_ALIVE_TIME / 256))
-  payload = payload .. string.char(client.KEEP_ALIVE_TIME % 256)
+  payload = payload .. string.char(math.floor(MQTT.client.KEEP_ALIVE_TIME / 256))
+  payload = payload .. string.char(MQTT.client.KEEP_ALIVE_TIME % 256)
 
 -- Client identifier
 -- ~~~~~~~~~~~~~~~~~
-  payload = payload .. client.encode_utf8(identifier)
+  payload = payload .. MQTT.client.encode_utf8(identifier)
 
 -- Last will and testament
 -- ~~~~~~~~~~~~~~~~~~~~~~~
   if (will_topic ~= nil) then
-    payload = payload .. client.encode_utf8(will_topic)
-    payload = payload .. client.encode_utf8(will_message)
+    payload = payload .. MQTT.client.encode_utf8(will_topic)
+    payload = payload .. MQTT.client.encode_utf8(will_message)
+  end
+
+  -- Username and password
+  -- ~~~~~~~~~~~~~~~~~~~~~
+  if type(self.username) == 'string' then
+    payload = payload .. MQTT.client.encode_utf8(self.username)
+  end
+  if type(self.password) == 'string' then
+    payload = payload .. MQTT.client.encode_utf8(self.password)
   end
 
 -- Send MQTT message
 -- ~~~~~~~~~~~~~~~~~
-  return(self:message_write(messageType.TYPE_CONNECT, payload))
+  return(self:message_write(MQTT.message.TYPE_CONNECT, payload))
 end
 
 --- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
@@ -285,8 +317,8 @@ end
 -- @param self
 -- @function [parent = #client] destroy
 --
-function client:destroy()                                    -- Public API
-  Utility.debug("client:destroy()")
+function MQTT.client:destroy()                                    -- Public API
+  MQTT.Utility.debug("MQTT.client:destroy()")
 
   if (self.destroyed == false) then
     self.destroyed = true         -- Avoid recursion when message_write() fails
@@ -301,19 +333,19 @@ end
 --- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
 -- Transmit MQTT Disconnect message.
 -- MQTT 3.1 Specification: Section 3.14: Disconnect notification
--- bytes 1,2: Fixed message header, see client:message_write()
+-- bytes 1,2: Fixed message header, see MQTT.client:message_write()
 -- @param self
 -- @function [parent = #client] disconnect
 --
-function client:disconnect()                                 -- Public API
-  Utility.debug("client:disconnect()")
+function MQTT.client:disconnect()                                 -- Public API
+  MQTT.Utility.debug("MQTT.client:disconnect()")
 
   if (self.connected) then
-    self:message_write(messageType.TYPE_DISCONNECT, nil)
+    self:message_write(MQTT.message.TYPE_DISCONNECT, nil)
     self.socket_client:close()
     self.connected = false
   else
-    error("client:disconnect(): Already disconnected")
+    error("MQTT.client:disconnect(): Already disconnected")
   end
 end
 
@@ -326,7 +358,7 @@ end
 -- byte  2:   String length LSB
 -- bytes 3-n: String encoded as UTF-8
 
-function client.encode_utf8(                               -- Internal API
+function MQTT.client.encode_utf8(                               -- Internal API
   input)  -- string
 
   local output
@@ -340,44 +372,44 @@ end
 --- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
 -- Handle received messages and maintain keep-alive PING messages.
 -- This function must be invoked periodically (more often than the
--- `client.KEEP_ALIVE_TIME`) which maintains the connection and
+-- `MQTT.client.KEEP_ALIVE_TIME`) which maintains the connection and
 -- services the incoming subscribed topic messages
 -- @param self
 -- @function [parent = #client] handler
 --
-function client:handler()                                    -- Public API
+function MQTT.client:handler()                                    -- Public API
   if (self.connected == false) then
-    error("client:handler(): Not connected")
+    error("MQTT.client:handler(): Not connected")
   end
 
-  Utility.debug("client:handler()")
+  MQTT.Utility.debug("MQTT.client:handler()")
 
 -- Transmit MQTT PING message
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~
 -- MQTT 3.1 Specification: Section 3.13: PING request
 --
--- bytes 1,2: Fixed message header, see client:message_write()
+-- bytes 1,2: Fixed message header, see MQTT.client:message_write()
 
-  local activity_timeout = self.last_activity + client.KEEP_ALIVE_TIME
+  local activity_timeout = self.last_activity + MQTT.client.KEEP_ALIVE_TIME
 
-  if (Utility.get_time() > activity_timeout) then
-    Utility.debug("client:handler(): PINGREQ")
+  if (MQTT.Utility.get_time() > activity_timeout) then
+    MQTT.Utility.debug("MQTT.client:handler(): PINGREQ")
 
-    self:message_write(messageType.TYPE_PINGREQ, nil)
+    self:message_write(MQTT.message.TYPE_PINGREQ, nil)
   end
 
 -- Check for available client socket data
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  local ready = Utility.socket_ready(self.socket_client)
+  local ready = MQTT.Utility.socket_ready(self.socket_client)
 
   if (ready) then
     local error_message, buffer =
-      Utility.socket_receive(self.socket_client)
+      MQTT.Utility.socket_receive(self.socket_client)
 
     if (error_message ~= nil) then
       self:destroy()
       error_message = "socket_client:receive(): " .. error_message
-      Utility.debug(error_message)
+      MQTT.Utility.debug(error_message)
       return(error_message)
     end
 
@@ -404,8 +436,8 @@ function client:handler()                                    -- Public API
         if (#message == remaining_length) then
           self:parse_message(message_type_flags, remaining_length, message)
         else
-          Utility.debug(
-            "client:handler(): Incorrect remaining length: " ..
+          MQTT.Utility.debug(
+            "MQTT.client:handler(): Incorrect remaining length: " ..
             remaining_length .. " ~= message length: " .. #message
           )
         end
@@ -417,14 +449,14 @@ function client:handler()                                    -- Public API
 
       if (index ~= (#buffer + 1)) then
         local error_message =
-          "client:handler(): Partial message received" ..
+          "MQTT.client:handler(): Partial message received" ..
           index .. " ~= " .. (#buffer + 1)
 
-        if (ERROR_TERMINATE) then         -- TODO: Refactor duplicate code
+        if (MQTT.ERROR_TERMINATE) then         -- TODO: Refactor duplicate code
           self:destroy()
           error(error_message)
         else
-          Utility.debug(error_message)
+          MQTT.Utility.debug(error_message)
         end
       end
     end
@@ -442,22 +474,22 @@ end
 -- bytes 2-5: Remaining length field (between one and four bytes long)
 -- bytes m- : Optional variable header and payload
 
-function client:message_write(                             -- Internal API
+function MQTT.client:message_write(                             -- Internal API
   message_type,  -- enumeration
   payload)       -- string
                  -- return: nil or error message
 
 -- TODO: Complete implementation of fixed header byte 1
 
-  local message = string.char(Utility.shift_left(message_type, 4))
+  local message = string.char(MQTT.Utility.shift_left(message_type, 4))
 
   if (payload == nil) then
     message = message .. string.char(0)  -- Zero length, no payload
   else
-    if (#payload > client.MAX_PAYLOAD_LENGTH) then
+    if (#payload > MQTT.client.MAX_PAYLOAD_LENGTH) then
       return(
-        "client:message_write(): Payload length = " .. #payload ..
-        " exceeds maximum of " .. client.MAX_PAYLOAD_LENGTH
+        "MQTT.client:message_write(): Payload length = " .. #payload ..
+        " exceeds maximum of " .. MQTT.client.MAX_PAYLOAD_LENGTH
       )
     end
 
@@ -479,10 +511,10 @@ function client:message_write(                             -- Internal API
 
   if (status == nil) then
     self:destroy()
-    return("client:message_write(): " .. error_message)
+    return("MQTT.client:message_write(): " .. error_message)
   end
 
-  self.last_activity = Utility.get_time()
+  self.last_activity = MQTT.Utility.get_time()
   return(nil)
 end
 
@@ -499,46 +531,46 @@ end
 -- removed from the message by the time this function is invoked.
 -- Leaving just the optional variable header and payload.
 
-function client:parse_message(                             -- Internal API
+function MQTT.client:parse_message(                             -- Internal API
   message_type_flags,  -- byte
   remaining_length,    -- integer
   message)             -- string: Optional variable header and payload
 
-  local message_type = Utility.shift_right(message_type_flags, 4)
+  local message_type = MQTT.Utility.shift_right(message_type_flags, 4)
 
--- TODO: messageType.TYPE table should include "parser handler" function.
+-- TODO: MQTT.message.TYPE table should include "parser handler" function.
 --       This would nicely collapse the if .. then .. elseif .. end.
 
-  if (message_type == messageType.TYPE_CONACK) then
+  if (message_type == MQTT.message.TYPE_CONACK) then
     self:parse_message_conack(message_type_flags, remaining_length, message)
 
-  elseif (message_type == messageType.TYPE_PUBLISH) then
+  elseif (message_type == MQTT.message.TYPE_PUBLISH) then
     self:parse_message_publish(message_type_flags, remaining_length, message)
 
-  elseif (message_type == messageType.TYPE_PUBACK) then
-    print("client:parse_message(): PUBACK -- UNIMPLEMENTED --")    -- TODO
+  elseif (message_type == MQTT.message.TYPE_PUBACK) then
+    print("MQTT.client:parse_message(): PUBACK -- UNIMPLEMENTED --")    -- TODO
 
-  elseif (message_type == messageType.TYPE_SUBACK) then
+  elseif (message_type == MQTT.message.TYPE_SUBACK) then
     self:parse_message_suback(message_type_flags, remaining_length, message)
 
-  elseif (message_type == messageType.TYPE_UNSUBACK) then
+  elseif (message_type == MQTT.message.TYPE_UNSUBACK) then
     self:parse_message_unsuback(message_type_flags, remaining_length, message)
 
-  elseif (message_type == messageType.TYPE_PINGREQ) then
+  elseif (message_type == MQTT.message.TYPE_PINGREQ) then
     self:ping_response()
 
-  elseif (message_type == messageType.TYPE_PINGRESP) then
+  elseif (message_type == MQTT.message.TYPE_PINGRESP) then
     self:parse_message_pingresp(message_type_flags, remaining_length, message)
 
   else
     local error_message =
-      "client:parse_message(): Unknown message type: " .. message_type
+      "MQTT.client:parse_message(): Unknown message type: " .. message_type
 
-    if (ERROR_TERMINATE) then             -- TODO: Refactor duplicate code
+    if (MQTT.ERROR_TERMINATE) then             -- TODO: Refactor duplicate code
       self:destroy()
       error(error_message)
     else
-      Utility.debug(error_message)
+      MQTT.Utility.debug(error_message)
     end
   end
 end
@@ -549,15 +581,15 @@ end
 -- MQTT 3.1 Specification: Section 3.2: CONACK Acknowledge connection
 --
 -- byte 1: Reserved value
--- byte 2: Connect return code, see CONACK.error_message[]
+-- byte 2: Connect return code, see MQTT.CONACK.error_message[]
 
-function client:parse_message_conack(                      -- Internal API
+function MQTT.client:parse_message_conack(                      -- Internal API
   message_type_flags,  -- byte
   remaining_length,    -- integer
   message)             -- string
 
-  local me = "client:parse_message_conack()"
-  Utility.debug(me)
+  local me = "MQTT.client:parse_message_conack()"
+  MQTT.Utility.debug(me)
 
   if (remaining_length ~= 2) then
     error(me .. ": Invalid remaining length")
@@ -568,8 +600,8 @@ function client:parse_message_conack(                      -- Internal API
   if (return_code ~= 0) then
     local error_message = "Unknown return code"
 
-    if (return_code <= table.getn(CONACK.error_message)) then
-      error_message = CONACK.error_message[return_code]
+    if (return_code <= table.getn(MQTT.CONACK.error_message)) then
+      error_message = MQTT.CONACK.error_message[return_code]
     end
 
     error(me .. ": Connection refused: " .. error_message)
@@ -581,13 +613,13 @@ end
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 -- MQTT 3.1 Specification: Section 3.13: PING response
 
-function client:parse_message_pingresp(                    -- Internal API
+function MQTT.client:parse_message_pingresp(                    -- Internal API
   message_type_flags,  -- byte
   remaining_length,    -- integer
   message)             -- string
 
-  local me = "client:parse_message_pingresp()"
-  Utility.debug(me)
+  local me = "MQTT.client:parse_message_pingresp()"
+  MQTT.Utility.debug(me)
 
   if (remaining_length ~= 0) then
     error(me .. ": Invalid remaining length")
@@ -605,13 +637,13 @@ end
 -- bytes 1- : Topic name and optional Message Identifier (if QOS > 0)
 -- bytes m- : Payload
 
-function client:parse_message_publish(                     -- Internal API
+function MQTT.client:parse_message_publish(                     -- Internal API
   message_type_flags,  -- byte
   remaining_length,    -- integer
   message)             -- string
 
-  local me = "client:parse_message_publish()"
-  Utility.debug(me)
+  local me = "MQTT.client:parse_message_publish()"
+  MQTT.Utility.debug(me)
 
   if (self.callback ~= nil) then
     if (remaining_length < 3) then
@@ -626,7 +658,7 @@ function client:parse_message_publish(                     -- Internal API
 -- Handle optional Message Identifier, for QOS levels 1 and 2
 -- TODO: Enable Subscribe with QOS and deal with PUBACK, etc.
 
-    local qos = Utility.shift_right(message_type_flags, 1) % 3
+    local qos = MQTT.Utility.shift_right(message_type_flags, 1) % 3
 
     if (qos > 0) then
       local message_id = string.byte(message, index) * 256
@@ -649,13 +681,13 @@ end
 -- bytes 1,2: Message Identifier
 -- bytes 3- : List of granted QOS for each subscribed topic
 
-function client:parse_message_suback(                      -- Internal API
+function MQTT.client:parse_message_suback(                      -- Internal API
   message_type_flags,  -- byte
   remaining_length,    -- integer
   message)             -- string
 
-  local me = "client:parse_message_suback()"
-  Utility.debug(me)
+  local me = "MQTT.client:parse_message_suback()"
+  MQTT.Utility.debug(me)
 
   if (remaining_length < 3) then
     error(me .. ": Invalid remaining length: " .. remaining_length)
@@ -688,13 +720,13 @@ end
 --
 -- bytes 1,2: Message Identifier
 
-function client:parse_message_unsuback(                    -- Internal API
+function MQTT.client:parse_message_unsuback(                    -- Internal API
   message_type_flags,  -- byte
   remaining_length,    -- integer
   message)             -- string
 
-  local me = "client:parse_message_unsuback()"
-  Utility.debug(me)
+  local me = "MQTT.client:parse_message_unsuback()"
+  MQTT.Utility.debug(me)
 
   if (remaining_length ~= 2) then
     error(me .. ": Invalid remaining length")
@@ -720,21 +752,21 @@ end
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 -- MQTT 3.1 Specification: Section 3.13: PING response
 
-function client:ping_response()                            -- Internal API
-  Utility.debug("client:ping_response()")
+function MQTT.client:ping_response()                            -- Internal API
+  MQTT.Utility.debug("MQTT.client:ping_response()")
 
   if (self.connected == false) then
-    error("client:ping_response(): Not connected")
+    error("MQTT.client:ping_response(): Not connected")
   end
 
-  self:message_write(messageType.TYPE_PINGRESP, nil)
+  self:message_write(MQTT.message.TYPE_PINGRESP, nil)
 end
 
 --- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
 -- Transmit MQTT Publish message.
 -- MQTT 3.1 Specification: Section 3.3: Publish message
 --
--- * bytes 1,2: Fixed message header, see client:message_write()
+-- * bytes 1,2: Fixed message header, see MQTT.client:message_write()
 --            Variable header ..
 -- * bytes 3- : Topic name and optional Message Identifier (if QOS > 0)
 -- * bytes m- : Payload
@@ -743,26 +775,26 @@ end
 -- @param #string payload
 -- @function [parent = #client] publish
 --
-function client:publish(                                     -- Public API
+function MQTT.client:publish(                                     -- Public API
   topic,    -- string
   payload)  -- string
 
   if (self.connected == false) then
-    error("client:publish(): Not connected")
+    error("MQTT.client:publish(): Not connected")
   end
 
-  Utility.debug("client:publish(): " .. topic)
+  MQTT.Utility.debug("MQTT.client:publish(): " .. topic)
 
-  local message = client.encode_utf8(topic) .. payload
+  local message = MQTT.client.encode_utf8(topic) .. payload
 
-  self:message_write(messageType.TYPE_PUBLISH, message)
+  self:message_write(MQTT.message.TYPE_PUBLISH, message)
 end
 
 --- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --
 -- Transmit MQTT Subscribe message.
 -- MQTT 3.1 Specification: Section 3.8: Subscribe to named topics
 --
--- * bytes 1,2: Fixed message header, see client:message_write()
+-- * bytes 1,2: Fixed message header, see MQTT.client:message_write()
 --            Variable header ..
 -- * bytes 3,4: Message Identifier
 -- * bytes 5- : List of topic names and their QOS level
@@ -770,11 +802,11 @@ end
 -- @param #string topics table of strings
 -- @function [parent = #client] subscribe
 --
-function client:subscribe(                                   -- Public API
+function MQTT.client:subscribe(                                   -- Public API
   topics)  -- table of strings
 
   if (self.connected == false) then
-    error("client:subscribe(): Not connected")
+    error("MQTT.client:subscribe(): Not connected")
   end
 
   self.message_id = self.message_id + 1
@@ -784,12 +816,12 @@ function client:subscribe(                                   -- Public API
   message = message .. string.char(self.message_id % 256)
 
   for index, topic in ipairs(topics) do
-    Utility.debug("client:subscribe(): " .. topic)
-    message = message .. client.encode_utf8(topic)
+    MQTT.Utility.debug("MQTT.client:subscribe(): " .. topic)
+    message = message .. MQTT.client.encode_utf8(topic)
     message = message .. string.char(0)  -- QOS level 0
   end
 
-  self:message_write(messageType.TYPE_SUBSCRIBE, message)
+  self:message_write(MQTT.message.TYPE_SUBSCRIBE, message)
 
   self.outstanding[self.message_id] = { "subscribe", topics }
 end
@@ -798,7 +830,7 @@ end
 -- Transmit MQTT Unsubscribe message
 -- MQTT 3.1 Specification: Section 3.10: Unsubscribe from named topics
 --
--- * bytes 1,2: Fixed message header, see client:message_write()
+-- * bytes 1,2: Fixed message header, see MQTT.client:message_write()
 --            Variable header ..
 -- * bytes 3,4: Message Identifier
 -- * bytes 5- : List of topic names
@@ -806,11 +838,11 @@ end
 -- @param #string topics table of strings
 -- @function [parent = #client] unsubscribe
 --
-function client:unsubscribe(                                 -- Public API
+function MQTT.client:unsubscribe(                                 -- Public API
   topics)  -- table of strings
 
   if (self.connected == false) then
-    error("client:unsubscribe(): Not connected")
+    error("MQTT.client:unsubscribe(): Not connected")
   end
 
   self.message_id = self.message_id + 1
@@ -820,12 +852,15 @@ function client:unsubscribe(                                 -- Public API
   message = message .. string.char(self.message_id % 256)
 
   for index, topic in ipairs(topics) do
-    Utility.debug("client:unsubscribe(): " .. topic)
-    message = message .. client.encode_utf8(topic)
+    MQTT.Utility.debug("MQTT.client:unsubscribe(): " .. topic)
+    message = message .. MQTT.client.encode_utf8(topic)
   end
 
-  self:message_write(messageType.TYPE_UNSUBSCRIBE, message)
+  self:message_write(MQTT.message.TYPE_UNSUBSCRIBE, message)
 
   self.outstanding[self.message_id] = { "unsubscribe", topics }
 end
 
+-- For ... MQTT = require 'paho.mqtt'
+
+return(MQTT)

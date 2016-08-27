@@ -1,9 +1,7 @@
-module("utility", package.seeall)
-
 ---
--- @module Utility
+-- @module paho.utility
 -- ~~~~~~~~~~~
--- Version: 0.2 2012-06-01
+-- Version: 0.3 2014-10-06
 -- -------------------------------------------------------------------------- --
 -- Copyright (c) 2011-2012 Geekscape Pty. Ltd.
 -- All rights reserved. This program and the accompanying materials
@@ -25,7 +23,7 @@ module("utility", package.seeall)
 -- - shift_left() should mask bits past the 8, 16, 32 and 64-bit boundaries.
 -- ------------------------------------------------------------------------- --
 
-function isPsp() return(Socket ~= nil) end
+local function isPsp() return(Socket ~= nil) end
 
 if (isPsp()) then socket = Socket end                        -- Compatibility !
 
@@ -33,15 +31,15 @@ if (isPsp()) then socket = Socket end                        -- Compatibility !
 
 local debug_flag = false
 
-function set_debug(value) debug_flag = value end
+local function set_debug(value) debug_flag = value end
 
-function debug(message)
+local function debug(message)
   if (debug_flag) then print(message) end
 end
 
 -- ------------------------------------------------------------------------- --
 
-function dump_string(value)
+local function dump_string(value)
   local index
 
   for index = 1, string.len(value) do
@@ -58,7 +56,7 @@ if (isPsp()) then
   timer:start()
 end
 
-function get_time()
+local function get_time()
   if (isPsp()) then
     return(timer:time() / 1000)
   else
@@ -66,7 +64,7 @@ function get_time()
   end
 end
 
-function expired(last_time, duration, type)
+local function expired(last_time, duration, type)
   local time_expired = get_time() >= (last_time + duration)
 
   if (time_expired) then debug("Event: " .. type) end
@@ -75,17 +73,17 @@ end
 
 -- ------------------------------------------------------------------------- --
 
-function shift_left(value, shift)
+local function shift_left(value, shift)
   return(value * 2 ^ shift)
 end
 
-function shift_right(value, shift)
+local function shift_right(value, shift)
   return(math.floor(value / 2 ^ shift))
 end
 
 -- ------------------------------------------------------------------------- --
 
-function socket_ready(socket_client)
+local function socket_ready(socket_client)
   local ready, read_sockets, write_sockets, error_state = true, nil, nil, nil
 
   if (not isPsp()) then
@@ -98,7 +96,7 @@ function socket_ready(socket_client)
   return(ready)
 end
 
-function socket_receive(socket_client, byte_count)
+local function socket_receive(socket_client, byte_count)
   local response, buffer, error_message = nil, nil, nil
 
   byte_count = byte_count or 128                                     -- default
@@ -114,7 +112,7 @@ function socket_receive(socket_client, byte_count)
   return(error_message), (buffer)                            -- nil or "closed"
 end
 
-function socket_wait_connected(socket_client)
+local function socket_wait_connected(socket_client)
   if (isPsp()) then
     while (socket_client:isConnected() == false) do
       System.sleep(100)
@@ -126,7 +124,7 @@ end
 
 -- ------------------------------------------------------------------------- --
 
-function table_to_string(table)
+local function table_to_string(table)
   local result = ''
 
   if (type(table) == 'table') then
@@ -147,97 +145,97 @@ function table_to_string(table)
   return(result)
 end
 
----- ------------------------------------------------------------------------- --
----- Define Utility "module"
----- ~~~~~~~~~~~~~~~~~~~~~~~
+-- ------------------------------------------------------------------------- --
+-- Define Utility "module"
+-- ~~~~~~~~~~~~~~~~~~~~~~~
+
+local Utility = {}
+
+---
+-- @function [parent = #paho.utility] isPsp
 --
---local Utility = {}
+Utility.isPsp = isPsp
+
+---
+-- @param #boolean flag
+-- @function [parent = #paho.utility] set_debug
 --
------
----- @function [parent = #utility] isPsp
-----
---Utility.isPsp = isPsp
+Utility.set_debug = set_debug
+
+---
+-- @param #string message
+-- @function [parent = #paho.utility] debug
 --
------
----- @param #boolean flag
----- @function [parent = #utility] set_debug
-----
---Utility.set_debug = set_debug
+Utility.debug = debug
+
+---
+-- @param #string value
+-- @function [parent = #paho.utility] dump_string
 --
------
----- @param #string message
----- @function [parent = #utility] debug
-----
---Utility.debug = debug
+
+Utility.dump_string = dump_string
+
+---
+-- @function [parent = #paho.utility] get_time
+-- @return #number
 --
------
----- @param #string value
----- @function [parent = #utility] dump_string
-----
+Utility.get_time = get_time
+
+---
+-- @param #number last_time
+-- @param #number duration
+-- @param #string type
+-- @function [parent = #paho.utility] expired
+-- @return #number
 --
---Utility.dump_string = dump_string
+Utility.expired = expired
+
+---
+-- @param #number value
+-- @param #number shift
+-- @function [parent = #paho.utility] shift_left
+-- @return #number
 --
------
----- @function [parent = #utility] get_time
----- @return #number
-----
---Utility.get_time = get_time
+Utility.shift_left = shift_left
+
+---
+-- @param #number value
+-- @param #number shift
+-- @function [parent = #paho.utility] shift_left
+-- @return #number
 --
------
----- @param #number last_time
----- @param #number duration
----- @param #string type
----- @function [parent = #utility] expired
----- @return #number
-----
---Utility.expired = expired
+Utility.shift_right = shift_right
+
+---
+-- @param socket_client
+-- @function [parent = #paho.utility] socket_ready
+-- @return #boolean
 --
------
----- @param #number value
----- @param #number shift
----- @function [parent = #utility] shift_left
----- @return #number
-----
---Utility.shift_left = shift_left
+Utility.socket_ready = socket_ready
+
+---
+-- @param socket_client
+-- @param #number byte_count
+-- @function [parent = #paho.utility] socket_receive
+-- @return #string,#string
 --
------
----- @param #number value
----- @param #number shift
----- @function [parent = #utility] shift_left
----- @return #number
-----
---Utility.shift_right = shift_right
+Utility.socket_receive = socket_receive
+
+---
+-- @param socket_client
+-- @function [parent = #paho.utility] socket_wait_connected
 --
------
----- @param socket_client
----- @function [parent = #utility] socket_ready
----- @return #boolean
-----
---Utility.socket_ready = socket_ready
+Utility.socket_wait_connected = socket_wait_connected
+
+---
+-- @param #table table
+-- @function [parent = #paho.utility] table_to_string
+-- @return #string
 --
------
----- @param socket_client
----- @param #number byte_count
----- @function [parent = #utility] socket_receive
----- @return #string,#string
-----
---Utility.socket_receive = socket_receive
---
------
----- @param socket_client
----- @function [parent = #utility] socket_wait_connected
-----
---Utility.socket_wait_connected = socket_wait_connected
---
------
----- @param #table table
----- @function [parent = #utility] table_to_string
----- @return #string
-----
---Utility.table_to_string = table_to_string
---
----- For ... Utility = require("utility")
---
---return(Utility)
---
----- ------------------------------------------------------------------------- --
+Utility.table_to_string = table_to_string
+
+-- For ... Utility = require 'paho.utility'
+
+return(Utility)
+
+-- ------------------------------------------------------------------------- --
