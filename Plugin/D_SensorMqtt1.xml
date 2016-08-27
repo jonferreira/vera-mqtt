@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+    <specVersion>
+        <major>1</major>
+        <minor>0</minor>
+    </specVersion>
+    <device>
+        <deviceType>urn:schemas-sensor-mqtt-se:device:SensorMqtt:1</deviceType>
+        <friendlyName>MQTT Sender</friendlyName>
+        <staticJson>D_SensorMqtt1.json</staticJson>
+        <serviceList>
+            <service>
+                <serviceType>urn:schemas-sensor-mqtt-se:service:SensorMqtt:1</serviceType>
+                <serviceId>urn:upnp-sensor-mqtt-se:serviceId:SensorMqtt1</serviceId>
+                <SCPDURL>S_SensorMqtt1.xml</SCPDURL>
+            </service>
+        </serviceList>
+        <implementationList>
+            <implementationFile>I_SensorMqtt1.xml</implementationFile>
+        </implementationList>
+    </device>
+</root>
+

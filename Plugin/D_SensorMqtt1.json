@@ -1,0 +1,215 @@
+{
+	"flashicon":"http://pbs.twimg.com/profile_images/1512652562/mqtticon-large_normal.png",
+	"doc_url":{
+		"doc_language":1,
+		"doc_manual":1,
+		"doc_version":1,
+		"doc_platform":0,
+		"doc_page":"sensors"
+	},
+	"Tabs":[
+        {
+            "Label": {
+                "lang_tag": "mqtt_tabname_control",
+                "text": "Settings"
+            },
+            "Position": "0",
+            "TabType": "flash",
+            "SceneGroup": [
+                {
+                    "id": "1",
+                    "top": "0",
+                    "left": "0",
+                    "x": "1",
+                    "y": "2"
+                }
+            ],
+            "ControlGroup": [
+                {
+                    "id": "1",
+                    "scenegroup": "1"
+                }
+            ],
+            "Control": [
+                {
+                    "ControlGroup": "2",
+                    "ControlType": "label",
+                    "text_align": "left",
+                    "top": "1",
+                    "left": "-0.2",
+                    "x": "2",
+                    "y": "1",
+                    "Label": {
+                        "lang_tag": "mqtt_server_ip",
+                        "text": "MQTT IP:"
+                    },
+                    "Display": {
+                        "Top": 15,
+                        "Left": 25,
+                        "Width": 75,
+                        "Height": 20
+                    }
+                },
+                {
+                    "ControlGroup": "2",
+                    "ControlType": "variable",
+                    "text_align": "left",
+                    "top": "1",
+                    "left": "0.9",
+                    "x": "2",
+                    "y": "1",
+                    "Display": {
+                        "Service": "urn:upnp-sensor-mqtt-se:serviceId:SensorMqtt1",
+                        "Variable": "mqttServerIp",
+                        "Value": "1",
+                        "Top": 15,
+                        "Left": 135,
+                        "Width": 75,
+                        "Height": 20
+                    }
+                },
+                {
+                    "ControlGroup": "2",
+                    "ControlType": "label",
+                    "text_align": "left",
+                    "top": "1.8",
+                    "left": "-0.2",
+                    "x": "2",
+                    "y": "1",
+                    "Label": {
+                        "lang_tag": "mqtt_server_port",
+                        "text": "MQTT Port:"
+                    },
+                    "Display": {
+                        "Top": 45,
+                        "Left": 25,
+                        "Width": 75,
+                        "Height": 20
+                    }
+                },
+                {
+                    "ControlGroup": "2",
+                    "ControlType": "variable",
+                    "text_align": "left",
+                    "top": "1.8",
+                    "left": "0.9",
+                    "x": "2",
+                    "y": "1",
+                    "Display": {
+                        "Service": "urn:upnp-sensor-mqtt-se:serviceId:SensorMqtt1",
+                        "Variable": "mqttServerPort",
+                        "Value": "1",
+                        "Top": 45,
+                        "Left": 135,
+                        "Width": 75,
+                        "Height": 20
+                    }
+                },
+                {
+                    "ControlGroup": "1",
+                    "ControlType": "label",
+                    "text_align": "left",
+                    "top": "1.8",
+                    "left": "-0.2",
+                    "x": "2",
+                    "y": "1",
+                    "Label": {
+                        "lang_tag": "mqtt_server_status",
+                        "text": "MQTT Status:"
+                    },
+                    "Display": {
+                        "Top": 75,
+                        "Left": 25,
+                        "Width": 75,
+                        "Height": 20
+                    }
+                },
+                {
+                    "ControlGroup": "1",
+                    "ControlType": "variable",
+                    "text_align": "left",
+                    "top": "1.8",
+                    "left": "0.9",
+                    "x": "2",
+                    "y": "1",
+                    "Display": {
+                        "Service": "urn:upnp-sensor-mqtt-se:serviceId:SensorMqtt1",
+                        "Variable": "mqttServerStatus",
+                        "Value": "1",
+                        "Top": 75,
+                        "Left": 135,
+                        "Width": 75,
+                        "Height": 20
+                    }
+                },
+                {
+                    "ControlGroup": "2",
+                    "ControlType": "label",
+                    "text_align": "left",
+                    "top": "1.8",
+                    "left": "-0.2",
+                    "x": "2",
+                    "y": "1",
+                    "Label": {
+                        "lang_tag": "mqtt_last_message",
+                        "text": "MQTT Last Message:"
+                    },
+                    "Display": {
+                        "Top": 105,
+                        "Left": 25,
+                        "Width": 75,
+                        "Height": 20
+                    }
+                },
+                {
+                    "ControlGroup": "2",
+                    "ControlType": "variable",
+                    "text_align": "left",
+                    "top": "1.8",
+                    "left": "0.9",
+                    "x": "2",
+                    "y": "1",
+                    "Display": {
+                        "Service": "urn:upnp-sensor-mqtt-se:serviceId:SensorMqtt1",
+                        "Variable": "mqttLastMessage",
+                        "Value": "1",
+                        "Top": 105,
+                        "Left": 145,
+                        "Width": 200,
+                        "Height": 20
+                    }
+                }
+            ]
+        },
+        {
+            "Label": {
+                "lang_tag": "tabname_watchdog",
+                "text": "Watchdog"
+            },
+            "Position": "1",
+            "TabType": "javascript",
+            "ScriptName": "J_SensorMqtt1.js",
+            "Function": "MQTT_showExistingServices"
+        },{
+            "Label": {
+                "lang_tag": "tabname_watchdog",
+                "text": "Alias"
+            },
+            "Position": "2",
+            "TabType": "javascript",
+            "ScriptName": "J_SensorMqtt1.js",
+            "Function": "MQTT_showDeviceAlias"
+        },
+		{
+			"Label":{
+				"lang_tag":"advanced",
+				"text":"Advanced"
+			},
+			"Position":"3",
+			"TabType":"javascript",
+			"ScriptName":"shared.js",
+			"Function":"advanced_device"
+		}
+	],
+	"DeviceType":"urn:schemas-sensor-mqtt-se:device:SensorMqtt:1"
+}
