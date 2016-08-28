@@ -15,6 +15,7 @@ local mqttServerPort = 0
 local mqttServerUser = nil
 local mqttServerPassword = nil
 local mqttServerConnected = "0"
+local mqttTopicPattern = nil
 local mqttWatches = "{}"
 local mqttAlias = "{}"
 local mqttLastMessage = ""
@@ -45,18 +46,29 @@ function watchSensorVariable(lul_device, lul_service, lul_variable, lul_value_ol
 	variableUpdate.DeviceId = lul_device
         variableUpdate.DeviceName = luup.devices[lul_device].description
         variableUpdate.DeviceType = luup.devices[lul_device].device_type
+        variableUpdate.ServiceId = lul_service
+        variableUpdate.Variable = lul_variable
         variableUpdate.RoomId = luup.devices[lul_device].room_num
         variableUpdate.RoomName = luup.rooms[variableUpdate.RoomId] or "No Room"
 	variableUpdate[watches[lul_service][lul_variable]] = lul_value_new
 	variableUpdate["Old" .. watches[lul_service][lul_variable]] = lul_value_old
 
+	-- Encode the payload before attributing variableUpdate for
+	-- topic generation based upon pattern substitution
 	local payload = json:encode(variableUpdate)
-	local topic = ""
 
-	if (alias[tostring(lul_device)]) then
-		topic = mqttVeraIdentifier.."/Events/"..alias[tostring(lul_device)]
-	else
-		topic = mqttVeraIdentifier.."/Events/"..lul_device
+	-- Add attributes legal for topic substitution but absent
+	-- from mqtt payload (e.g. city, alias, access_point, etc.)
+	variableUpdate.SerialNumber = luup.pk_accesspoint
+	variableUpdate.City = luup.city
+	variableUpdate.Alias = alias[tostring(lul_device)] or lul_device
+	tokens = {(lul_service .. ":"):match(((lul_service .. ":"):gsub("[^:]*:", "([^:]*):")))}
+	variableUpdate.ServiceName = tokens[#tokens]
+
+	-- Generate the topic using the topic pattern
+	local topic = mqttTopicPattern -- <alias for variable mqttVeraIdentifier>
+	for i,v in pairs(variableUpdate) do
+		topic = string.gsub(topic, "%(" .. i .. "%)", v)
 	end
 
 	publishMessage(topic, payload)
@@ -120,7 +132,7 @@ function connectToMqtt()
            mqttClient:auth(mqttUsername, mqttPassword)
         end
 --	local result = mqttClient:connect("VeraController")
-	local result = mqttClient:connect(mqttVeraIdentifier, "Will_Topic/", 2, 1, "testament_msg")
+	local result = mqttClient:connect("VeraController", "Will_Topic/", 2, 1, "testament_msg")
 	if (result ~=nil and result == "client:connect(): Couldn't open MQTT broker connection") then
 		luup.log(result)
 		setConnectionStatus(false)
@@ -261,9 +273,22 @@ function startup(lul_device)
 		luup.variable_set(SERVICE_ID, "mqttLastMessage", mqttLastMessage, DEVICE_ID)
 	end
 	
-	mqttVeraIdentifier = luup.variable_get(SERVICE_ID, "mqttVeraIdentifier", DEVICE_ID)
-	if(mqttVeraIdentifier == nil) then
-		mqttVeraIdentifier = "Vera"
+	-- Topic Pattern variables
+	-- (SerialNumber) = Vera serial number as shown on home.getvera.com portal.
+	-- (City) = the city defined in the controller location tab
+	-- (ServiceId) = the service identifier
+	-- (ServiceName) = the name of the service
+	-- (DeviceId) = the device id
+	-- (DeviceName) = the device name / description
+	-- (Alias) = the device alias (legacy)
+	-- (Variable) = the variable changed under service for device
+	--
+	-- Legacy pattern = Vera/Event/(Alias)
+	-- Recommended = Vera/(SerialNumber)/(DeviceId)/(ServiceName)
+
+	mqttTopicPattern = luup.variable_get(SERVICE_ID, "mqttVeraIdentifier", DEVICE_ID)
+	if(mqttTopicPattern == nil) then
+		mqttTopicPattern = "Vera/Events/(Alias)"
 		luup.variable_set(SERVICE_ID, "mqttVeraIdentifier", mqttVeraIdentifier, DEVICE_ID)
 	end
 
