@@ -44,7 +44,7 @@ function watchSensorVariable(lul_device, lul_service, lul_variable, lul_value_ol
 	local variableUpdate = {}
 	variableUpdate.Time = os.time()
 	variableUpdate.DeviceId = lul_device
-        variableUpdate.DeviceName = luup.devices[lul_device].description
+        variableUpdate.DeviceName = alias[tostring(lul_device)] or luup.devices[lul_device].description
         variableUpdate.DeviceType = luup.devices[lul_device].device_type
         variableUpdate.ServiceId = lul_service
         variableUpdate.Variable = lul_variable
