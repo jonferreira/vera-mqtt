@@ -289,7 +289,7 @@ function startup(lul_device)
 	mqttTopicPattern = luup.variable_get(SERVICE_ID, "mqttVeraIdentifier", DEVICE_ID)
 	if(mqttTopicPattern == nil) then
 		mqttTopicPattern = "Vera/Events/(Alias)"
-		luup.variable_set(SERVICE_ID, "mqttVeraIdentifier", mqttVeraIdentifier, DEVICE_ID)
+		luup.variable_set(SERVICE_ID, "mqttVeraIdentifier", mqttTopicPattern, DEVICE_ID)
 	end
 
 	if (mqttServerIp ~= "0.0.0.0") then
