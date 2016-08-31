@@ -50,8 +50,8 @@ function watchSensorVariable(lul_device, lul_service, lul_variable, lul_value_ol
         variableUpdate.Variable = lul_variable
         variableUpdate.RoomId = luup.devices[lul_device].room_num
         variableUpdate.RoomName = luup.rooms[variableUpdate.RoomId] or "No Room"
-	variableUpdate[watches[lul_service][lul_variable]] = lul_value_new
-	variableUpdate["Old" .. watches[lul_service][lul_variable]] = lul_value_old
+	variableUpdate[watches[lul_service][lul_variable]] = tonumber(lul_value_new) or lul_value_new
+	variableUpdate["Old" .. watches[lul_service][lul_variable]] = tonumber(lul_value_old) or lul_value_old
 
 	-- Encode the payload before attributing variableUpdate for
 	-- topic generation based upon pattern substitution
