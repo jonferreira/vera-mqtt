@@ -122,23 +122,25 @@ end
 -- Connect to MQTT
 -- ------------------------------------------------------------------
 function connectToMqtt()
-	luup.log(SENSOR_MQTT_LOG_NAME .. "Connect to MQTT", 1)
+	luup.log(SENSOR_MQTT_LOG_NAME .. "Connect to MQTT, mqttServerIp: " .. mqttServerIp .. " mqttServerPort: " .. tostring(mqttServerPort), 1)
 	-- TODO: Add checks for IP and Port	
 	mqttServerPort = tonumber(mqttServerPort)
 	mqttClient = MQTT.client.create(mqttServerIp, mqttServerPort)
 	mqttClient.KEEP_ALIVE_TIME = 3600
         -- If a username and password are provided, set the broker authentication
         if (mqttServerUser ~= "" and mqttServerPassword ~= "" ) then
+           luup.log(SENSOR_MQTT_LOG_NAME .. "Authenticating with username: " .. mqttServerUser)
            mqttClient:auth(mqttUsername, mqttPassword)
         end
 --	local result = mqttClient:connect("VeraController")
 	local result = mqttClient:connect("VeraController", "Will_Topic/", 2, 1, "testament_msg")
-	if (result ~=nil and result == "client:connect(): Couldn't open MQTT broker connection") then
-		luup.log(result)
+	if (result ~= nil and result == "MQTT.client:connect(): Couldn't open MQTT broker connection") then
+		luup.log(SENSOR_MQTT_LOG_NAME .. result, 1)
 		setConnectionStatus(false)
 		luup.call_delay('connectToMqtt', 10, "")
 	else
 		setConnectionStatus(true)
+                luup.log(SENSOR_MQTT_LOG_NAME .. "Successfully connected to broker: " .. mqttServerIp .. " on port " .. tostring(mqttServerPort))
 	end
 end
 
