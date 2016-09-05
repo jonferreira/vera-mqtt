@@ -4,7 +4,6 @@ module("L_SensorMqtt1", package.seeall)
 SERVICE_ID = "urn:upnp-sensor-mqtt-se:serviceId:SensorMqtt1"
 SENSOR_MQTT_LOG_NAME = "SensorMqtt: "
 
-local DEBUG = false
 local DEVICE_ID
 local HANDLERS = {}
 local ITEMS_NEEDED = 0
@@ -38,19 +37,27 @@ local MQTT = require("mqtt_library")
 json = nil
 
 -- ------------------------------------------------------------------
--- Convenience function for consistent logging convention throughput SensorMqtt
+-- Convenience functions for consistent logging convention throughput SensorMqtt
+-- grep '\(^01\|^02\|^35\|^50\).*SensorMqtt' /var/log/cmh/LuaUPnP.log
 -- ------------------------------------------------------------------
 local function log(text, level)
-	luup.log(SENSOR_MQTT_LOG_NAME .. " " .. text, (level or 50))
+	luup.log(SENSOR_MQTT_LOG_NAME .. text, (level or 50))
 end
 
--- ------------------------------------------------------------------
--- Convenience function for consistent debug logging 
--- ------------------------------------------------------------------
-local function debug(s)
-	if (DEBUG) then
-		log(s, 2)
-	end
+local function log_info(text)	-- Appears as normal text
+	log(text, 50)		-- grep '^50.*SensorMqtt'
+end
+
+local function log_warn(text)	-- Appears as yellow text [02]
+	log(text, 2)		-- grep '^2.*SensorMqtt'
+end
+
+local function log_error(text)  -- Appears as red text	[01]
+	log(text, 1)		-- grep '^1.*SensorMqtt'
+end
+
+local function log_debug(text)  -- Reported with verbose logging enabled [35]
+	log(text, 35)
 end
 
 -- ------------------------------------------------------------------
@@ -73,8 +80,10 @@ local function setConnectionStatus()
 	local currentStatus  = connectedToBroker()
 	local previousStatus = luup.variable_get(SERVICE_ID, "mqttServerConnected", DEVICE_ID) == "1" and true or false
 
-	if (currentStatus ~= previousStatus) then
-		log("MQTT connection status changed from \"" .. statusAsStr(previousStatus) .. "\" to \"" .. statusAsStr(currentStatus) .. "\"")
+	log_debug("setConnectionStatus:  currentStatus = " .. tostring(currentStatus) .. " previousStatus = " .. tostring(previousStatus))
+
+	if ( currentStatus ~= previousStatus ) then
+		log_info("MQTT connection status changed from \"" .. statusAsStr(previousStatus) .. "\" to \"" .. statusAsStr(currentStatus) .. "\"")
 		luup.variable_set(SERVICE_ID, "mqttServerStatus",    statusAsStr(currentStatus), DEVICE_ID)
 		luup.variable_set(SERVICE_ID, "mqttServerConnected", currentStatus and "1" or "0", DEVICE_ID)
 	end
@@ -84,12 +93,12 @@ end
 -- Connect to MQTT
 -- ------------------------------------------------------------------
 local function connectToMqtt()
-	log("Connect to MQTT, mqttServerIp: " .. mqttServerIp .. " mqttServerPort: " .. mqttServerPort)
+	log_info("Connecting to MQTT, mqttServerIp: " .. mqttServerIp .. " mqttServerPort: " .. mqttServerPort .. "...")
 	-- TODO: Add checks for IP and Port
 	mqttServerPort = tonumber(mqttServerPort)
 
 	-- Cleanup previous client instances e.g. server disconnect, ping/publish fail, etc.
-	if (mqttClient ~= nil) then
+	if ( mqttClient ~= nil ) then
 		mqttClient:destroy()
 		mqttClient = nil
 	end
@@ -102,20 +111,20 @@ local function connectToMqtt()
 		mqttClient.KEEP_ALIVE_TIME = 60
 
 		-- If a username and password are provided, set the broker authentication
-		if (mqttServerUser ~= "" and mqttServerPassword ~= "" ) then
-			debug("Authenticating with username: " .. mqttServerUser)
+		if ( mqttServerUser ~= "" and mqttServerPassword ~= "" ) then
+			log_debug("Authenticating with username: " .. mqttServerUser)
 			mqttClient:auth(mqttUsername, mqttPassword)
 		end
 
 		-- Connect to broker, if possible
 		local result = mqttClient:connect("Vera-" .. mqttClientSerial)
-		if (result == nil) then
-			log("Successfully connected to broker: " .. mqttServerIp .. " on port " .. mqttServerPort)
+		if ( result == nil ) then
+			log_info("Successfully connected to broker: " .. mqttServerIp .. " on port " .. mqttServerPort)
 		else
-			log("Failed to connect, reason: " .. result, 1)
+			log_warn("Failed to connect, reason: " .. result)
 		end
 	else
-		log("Internal error - failed to instantiate MQTT.client using MQTT.client.create()", 1)
+		log_error("Internal error - failed to instantiate MQTT.client using MQTT.client.create()")
 	end
 
 	-- Finally, set the connection status
@@ -127,7 +136,7 @@ end
 -- ------------------------------------------------------------------
 local function publishMessage(topic, payload)
 
-	debug("Publish MQTT message on topic: " ..topic.. " with value:" .. payload)
+	log_debug("Publish topic: " ..topic.. " message:" .. payload)
 
 	-- If we aren't connected for some reason, then connect first
 	if ( not connectedToBroker() ) then
@@ -137,7 +146,7 @@ local function publishMessage(topic, payload)
 	-- Try to publish.  Mqtt standard is fire and forget on publishing.
 	local ok, result = pcall(mqttClient.publish, mqttClient, topic, payload)
 	if ( not ok ) then
-		log("Unable to publish, connection down.  Discarding message: " .. payload, 1)
+		log_warn("Unable to publish, connection down.  Discarding message: " .. payload)
 		setConnectionStatus()
 	end
 end
@@ -157,9 +166,9 @@ function processMqttEvents()
 	-- Make a protected call to mqtt handler because it will raise an exception if the client
 	-- is not connected to the broker.  If handler() fails, set our state to disconnected.
 	local ok, result = pcall(mqttClient.handler, mqttClient)
-	if (not ok or result ~= nil) then
+	if ( not ok or result ~= nil ) then
 		-- This is non-fatal.  Client will reconnect on next variable change/publish
-		debug("Connection down: " .. result or "unknown reason", 1)
+		log_debug("Connection down: " .. result or "unknown reason")
 		setConnectionStatus()
 	end
 end
@@ -168,7 +177,8 @@ end
 -- Callback Watch Configured Sensor Variables (non-local so MIOS can invoke it)
 -- ------------------------------------------------------------------
 function watchSensorVariable(lul_device, lul_service, lul_variable, lul_value_old, lul_value_new)
-	debug("Device: " .. lul_device .. " Variable: " .. lul_variable .. " Value " .. tostring(lul_value_old) .. " => " .. tostring(lul_value_new))
+
+	log_debug("Watch event - device: " .. lul_device .. " variable: " .. lul_variable .. " value " .. tostring(lul_value_old) .. " => " .. tostring(lul_value_new))
 
 	local variableUpdate = {}
 	variableUpdate.Time = os.time()
@@ -200,6 +210,7 @@ function watchSensorVariable(lul_device, lul_service, lul_variable, lul_value_ol
 		topic = string.gsub(topic, "%(" .. i .. "%)", v)
 	end
 
+	log_info("Sending [" .. variableUpdate.DeviceName .. "] " .. lul_variable .. " changed to " .. tostring(lul_value_new) .. " from " .. tostring(lul_value_old) .. " on topic " .. topic)
 	publishMessage(topic, payload)
 
 	local lastMessage = {}
@@ -218,11 +229,11 @@ local function registerWatches()
 	watches = json:decode(mqttWatches)
 	alias = json:decode(mqttAlias)
 
-	debug("************************************************ MQTT Settings ************************************************")
+	log_debug("************************************************ MQTT Settings ************************************************")
 
 	for service,variables in pairs(watches) do
 		for varName, label in pairs(variables) do
-			debug("Watching ".. service .." on variable " .. varName .. " with label " .. label )
+			log_debug("Watching ".. service .." on variable " .. varName .. " with label " .. label)
 			luup.variable_watch("watchSensorVariable", tostring(service), tostring(varName), nil)
 		end
 	end
@@ -238,7 +249,7 @@ function startup(lul_device)
 	_G.watchSensorVariable = watchSensorVariable
 	_G.processMqttEvents = processMqttEvents
 	
-	log("Initializing SensorMqtt")
+	log_info("Initializing SensorMqtt")
 
 	package.loaded.JSON = nil
 	json = require("JSON")
@@ -250,43 +261,43 @@ function startup(lul_device)
 
 	--Reading variables
 	mqttServerIp = luup.variable_get(SERVICE_ID, "mqttServerIp", DEVICE_ID)
-	if(mqttServerIp == nil) then
+	if ( mqttServerIp == nil ) then
 		mqttServerIp = "0.0.0.0"
 		luup.variable_set(SERVICE_ID, "mqttServerIp", mqttServerIp, DEVICE_ID)
 	end
 	
 	mqttServerPort = luup.variable_get(SERVICE_ID, "mqttServerPort", DEVICE_ID)
-	if(mqttServerPort == nil) then
+	if ( mqttServerPort == nil ) then
 		mqttServerPort = "0"
 		luup.variable_set(SERVICE_ID, "mqttServerPort", mqttServerPort, DEVICE_ID)
 	end
 
 	mqttServerUser = luup.variable_get(SERVICE_ID, "mqttServerUser", DEVICE_ID)
-	if(mqttServerUser == nil) then
+	if ( mqttServerUser == nil ) then
 		mqttServerUser = ""
 		luup.variable_set(SERVICE_ID, "mqttServerUser", mqttServerUser, DEVICE_ID)
 	end
 
 	mqttServerPassword = luup.variable_get(SERVICE_ID, "mqttServerPassword", DEVICE_ID)
-	if(mqttServerPassword == nil) then
+	if ( mqttServerPassword == nil ) then
 		mqttServerPassword = ""
 		luup.variable_set(SERVICE_ID, "mqttServerPassword", mqttServerPassword, DEVICE_ID)
 	end
 
 	mqttWatches = luup.variable_get(SERVICE_ID, "mqttWatches", DEVICE_ID)
-	if(mqttWatches == nil) then
+	if( mqttWatches == nil ) then
 		mqttWatches = "{}"
 		luup.variable_set(SERVICE_ID, "mqttWatches", mqttWatches, DEVICE_ID)
 	end
 
 	mqttAlias = luup.variable_get(SERVICE_ID, "mqttAlias", DEVICE_ID)
-	if(mqttAlias == nil) then
+	if( mqttAlias == nil ) then
 		mqttAlias = "{}"
 		luup.variable_set(SERVICE_ID, "mqttAlias", mqttAlias, DEVICE_ID)
 	end
 
 	mqttLastMessage = luup.variable_get(SERVICE_ID, "mqttLastMessage", DEVICE_ID)
-	if(mqttLastMessage == nil) then
+	if( mqttLastMessage == nil ) then
 		mqttLastMessage = ""
 		luup.variable_set(SERVICE_ID, "mqttLastMessage", mqttLastMessage, DEVICE_ID)
 	end
@@ -305,20 +316,20 @@ function startup(lul_device)
 	-- Recommended = Vera/(SerialNumber)/(DeviceId)/(ServiceName)
 
 	mqttTopicPattern = luup.variable_get(SERVICE_ID, "mqttVeraIdentifier", DEVICE_ID)
-	if(mqttTopicPattern == nil) then
+	if( mqttTopicPattern == nil ) then
 		mqttTopicPattern = "Vera/Events/(Alias)"
 		luup.variable_set(SERVICE_ID, "mqttVeraIdentifier", mqttTopicPattern, DEVICE_ID)
 	end
 
-	if (mqttServerIp ~= "0.0.0.0" and mqttServerPort ~= "0") then
+	if ( mqttServerIp ~= "0.0.0.0" and mqttServerPort ~= "0" ) then
 		connectToMqtt()
 	else
-		log("You must set the mqttServerIp and the mqttServerPort for the broker in order for the client to connect..")
+		log_warn("You must set the mqttServerIp and the mqttServerPort for the broker in order for the client to connect..")
 	end
 	
-	if (connectedToBroker()) then
+	if ( connectedToBroker() ) then
 		registerWatches()
-		luup.call_delay('processMqttEvents', mqttEventProcessingInterval)
+		processMqttEvents() -- kick off the mqtt event handling
 	end
 end
 

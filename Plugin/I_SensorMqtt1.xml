@@ -6,7 +6,7 @@
         local m
         
         function startup(lul_device)
-            luup.log("SensorMqtt plugin: loading library L_SensorMqtt1 ...")
+            luup.log("SensorMqtt: Loading plugin module L_SensorMqtt1 ...")
             if (package.path:find ("/etc/cmh-ludl/?.lua;/etc/cmh-lu/?.lua", 1, true) == nil) then
                 package.path = package.path .. ";/etc/cmh-ludl/?.lua;/etc/cmh-lu/?.lua"
             end
@@ -15,11 +15,11 @@
             p = require("L_SensorMqtt1")
             if (package.loaded.L_SensorMqtt1 == nil) 
             then
-                luup.log("SensorMqtt1 plugin: plugin is not installed correctly. Library L_SensorMqtt1 cannot be loaded.", 1)
+                luup.log("SensorMqtt: Plugin is not installed correctly. Library L_SensorMqtt1 cannot be loaded.", 1)
                 luup.task("Plugin not correctly installed", 2, "SensorMqtt plugin", -1)
                 return false
             end
-            luup.log("SensorMqtt plugin: library L_SensorMqtt1 loaded")
+            luup.log("SensorMqtt: Plugin module L_SensorMqtt1 loaded")
             
             return p.startup(lul_device)
         end
