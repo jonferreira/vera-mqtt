@@ -80,8 +80,6 @@ local function setConnectionStatus()
 	local currentStatus  = connectedToBroker()
 	local previousStatus = luup.variable_get(SERVICE_ID, "mqttServerConnected", DEVICE_ID) == "1" and true or false
 
-	log_debug("setConnectionStatus:  currentStatus = " .. tostring(currentStatus) .. " previousStatus = " .. tostring(previousStatus))
-
 	if ( currentStatus ~= previousStatus ) then
 		log_info("MQTT connection status changed from \"" .. statusAsStr(previousStatus) .. "\" to \"" .. statusAsStr(currentStatus) .. "\"")
 		luup.variable_set(SERVICE_ID, "mqttServerStatus",    statusAsStr(currentStatus), DEVICE_ID)
@@ -117,7 +115,7 @@ local function connectToMqtt()
 		end
 
 		-- Connect to broker, if possible
-		local result = mqttClient:connect("Vera-" .. mqttClientSerial)
+		local result = mqttClient:connect("Vera-" .. mqttClientSerial, "Will_Topic/", 2, 1, "testament_msg")
 		if ( result == nil ) then
 			log_info("Successfully connected to broker: " .. mqttServerIp .. " on port " .. mqttServerPort)
 		else
