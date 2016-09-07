@@ -91,7 +91,9 @@ end
 -- Connect to MQTT
 -- ------------------------------------------------------------------
 local function connectToMqtt()
-	log_info("Connecting to MQTT, mqttServerIp: " .. mqttServerIp .. " mqttServerPort: " .. mqttServerPort .. "...")
+	local clientId = "Vera-" .. mqttClientSerial
+
+	log_info("Connecting as MQTT client: " .. clientId .. " to mqttServerIp: " .. mqttServerIp .. " mqttServerPort: " .. mqttServerPort .. "...")
 	-- TODO: Add checks for IP and Port
 	mqttServerPort = tonumber(mqttServerPort)
 
@@ -111,11 +113,11 @@ local function connectToMqtt()
 		-- If a username and password are provided, set the broker authentication
 		if ( mqttServerUser ~= "" and mqttServerPassword ~= "" ) then
 			log_debug("Authenticating with username: " .. mqttServerUser)
-			mqttClient:auth(mqttUsername, mqttPassword)
+			mqttClient:auth(mqttServerUser, mqttServerPassword)
 		end
 
 		-- Connect to broker, if possible
-		local result = mqttClient:connect("Vera-" .. mqttClientSerial, "Will_Topic/", 2, 1, "testament_msg")
+		local result = mqttClient:connect(clientId, "Will_Topic/", 2, 1, "testament_msg")
 		if ( result == nil ) then
 			log_info("Successfully connected to broker: " .. mqttServerIp .. " on port " .. mqttServerPort)
 		else
