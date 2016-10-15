@@ -331,5 +331,6 @@ function startup(lul_device)
 		registerWatches()
 		processMqttEvents() -- kick off the mqtt event handling
 	end
-end
 
+        luup.set_failure(false, DEVICE_ID)
+end
