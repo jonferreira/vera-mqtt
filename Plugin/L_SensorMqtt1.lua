@@ -41,7 +41,8 @@ json = nil
 -- grep '\(^01\|^02\|^35\|^50\).*SensorMqtt' /var/log/cmh/LuaUPnP.log
 -- ------------------------------------------------------------------
 local function log(text, level)
-	luup.log(SENSOR_MQTT_LOG_NAME .. text, (level or 50))
+	local logLevel = level or 50
+	luup.log(SENSOR_MQTT_LOG_NAME .. text, logLevel)
 end
 
 local function log_info(text)	-- Appears as normal text
