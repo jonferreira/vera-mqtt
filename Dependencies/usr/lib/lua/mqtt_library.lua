@@ -123,6 +123,13 @@ MQTT.client.DEFAULT_PORT       = 1883
 MQTT.client.KEEP_ALIVE_TIME    =   60  -- seconds (maximum is 65535)
 
 ---
+-- @field [parent = #client] #number CONNECT_TIMEOUT
+-- Seconds to bound a blocking connect to a down/unreachable broker, so that a
+-- periodic reconnect can't stall a single-threaded host (e.g. Vera Luup).
+--
+MQTT.client.CONNECT_TIMEOUT    =    5  -- seconds
+
+---
 -- @field [parent = #client] #number MAX_PAYLOAD_LENGTH
 --
 MQTT.client.MAX_PAYLOAD_LENGTH = 268435455 -- bytes
@@ -192,6 +199,8 @@ function MQTT.client.create(                                      -- Public API
   mqtt_client.connected     = false
   mqtt_client.destroyed     = false
   mqtt_client.last_activity = 0
+  mqtt_client.ping_response_outstanding = false  -- awaiting a PINGRESP ?
+  mqtt_client.ping_sent_time            = 0      -- when the unanswered PINGREQ went out
   mqtt_client.message_id    = 0
   mqtt_client.outstanding   = {}
   mqtt_client.socket_client = nil
@@ -241,11 +250,24 @@ function MQTT.client:connect(                                     -- Public API
 
   MQTT.Utility.debug("MQTT.client:connect(): " .. identifier)
 
-  self.socket_client = socket.connect(self.hostname, self.port)
-
-  if (self.socket_client == nil) then
-    return("MQTT.client:connect(): Couldn't open MQTT broker connection")
+  -- Create the TCP object ourselves so we can bound the connect with a timeout;
+  -- socket.connect() offers no way to do that and will block the caller until the
+  -- OS connect timeout when the broker host is unreachable (e.g. mid-reboot).
+  local client, create_error = socket.tcp()
+  if (client == nil) then
+    return("MQTT.client:connect(): " .. (create_error or "couldn't create socket"))
   end
+
+  client:settimeout(MQTT.client.CONNECT_TIMEOUT)
+  local connected, connect_error = client:connect(self.hostname, self.port)
+
+  if (connected == nil) then
+    client:close()
+    return("MQTT.client:connect(): Couldn't open MQTT broker connection: " ..
+           (connect_error or "unknown"))
+  end
+
+  self.socket_client = client
 
   MQTT.Utility.socket_wait_connected(self.socket_client)
 
@@ -390,12 +412,31 @@ function MQTT.client:handler()                                    -- Public API
 --
 -- bytes 1,2: Fixed message header, see MQTT.client:message_write()
 
+  local now = MQTT.Utility.get_time()
+
+-- Keep-alive liveness: if a PINGREQ has gone unanswered for KEEP_ALIVE_TIME, the
+-- link is dead (e.g. a half-open TCP socket left behind when the broker vanished
+-- without a FIN/RST).  Fail the connection so the caller reconnects, rather than
+-- streaming publishes into a black hole.
+  if (self.ping_response_outstanding and
+      now > self.ping_sent_time + MQTT.client.KEEP_ALIVE_TIME) then
+    self:destroy()
+    local error_message = "MQTT.client:handler(): No PINGRESP within keep-alive; connection dead"
+    MQTT.Utility.debug(error_message)
+    return(error_message)
+  end
+
   local activity_timeout = self.last_activity + MQTT.client.KEEP_ALIVE_TIME
 
-  if (MQTT.Utility.get_time() > activity_timeout) then
+  if (now > activity_timeout) then
     MQTT.Utility.debug("MQTT.client:handler(): PINGREQ")
 
-    self:message_write(MQTT.message.TYPE_PINGREQ, nil)
+    local ping_error = self:message_write(MQTT.message.TYPE_PINGREQ, nil)
+    if (ping_error ~= nil) then
+      return(ping_error)          -- message_write() has already destroyed the client
+    end
+    self.ping_response_outstanding = true
+    self.ping_sent_time = now
   end
 
 -- Check for available client socket data
@@ -625,7 +666,7 @@ function MQTT.client:parse_message_pingresp(                    -- Internal API
     error(me .. ": Invalid remaining length")
   end
 
--- ToDo: self.ping_response_outstanding = false
+  self.ping_response_outstanding = false
 end
 
 -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - --

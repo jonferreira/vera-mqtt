@@ -24,6 +24,13 @@ local mqttClientSerial = luup.pk_accesspoint
 -- Decrease to 1 second if subscriptions are implemented
 local mqttEventProcessingInterval = 5
 
+-- Autonomous reconnect backoff.  When the broker link is down, processMqttEvents()
+-- reconnects itself rather than waiting for a watched variable to change, but no
+-- more often than mqttReconnectInterval seconds so a genuinely-down broker does not
+-- trigger a (bounded but still blocking) socket connect on every event tick.
+local mqttReconnectInterval = 60
+local mqttNextReconnect = 0
+
 local watches = {}
 local alias = {}
 
@@ -165,12 +172,30 @@ function processMqttEvents()
 	luup.call_delay('processMqttEvents', mqttEventProcessingInterval)
 
 	-- Make a protected call to mqtt handler because it will raise an exception if the client
-	-- is not connected to the broker.  If handler() fails, set our state to disconnected.
-	local ok, result = pcall(mqttClient.handler, mqttClient)
+	-- is not connected to the broker.  A nil client (never connected) also counts as down.
+	local ok, result
+	if ( mqttClient == nil ) then
+		ok, result = false, "no client"
+	else
+		ok, result = pcall(mqttClient.handler, mqttClient)
+	end
+
 	if ( not ok or result ~= nil ) then
-		-- This is non-fatal.  Client will reconnect on next variable change/publish
-		log_debug("Connection down: " .. result or "unknown reason")
+		-- Link is down.  Record the status, then self-heal by reconnecting here
+		-- (throttled) instead of waiting for the next watched-variable publish, so
+		-- recovery no longer depends on a variable happening to change.
+		log_debug("Connection down: " .. tostring(result))
 		setConnectionStatus()
+
+		local now = os.time()
+		if ( now >= mqttNextReconnect ) then
+			mqttNextReconnect = now + mqttReconnectInterval
+			log_info("MQTT link down - attempting reconnect")
+			connectToMqtt()
+		end
+	else
+		-- Healthy tick: clear any backoff so the next outage reconnects promptly.
+		mqttNextReconnect = 0
 	end
 end
 
@@ -323,14 +348,15 @@ function startup(lul_device)
 	end
 
 	if ( mqttServerIp ~= "0.0.0.0" and mqttServerPort ~= "0" ) then
+		-- Attempt the initial connect, but do NOT gate watch registration or the
+		-- event pump on its success.  If the broker is down right now (e.g. a Luup
+		-- reload racing the broker's own startup), connectToMqtt() fails harmlessly
+		-- and processMqttEvents() reconnects on its own once the broker is back.
 		connectToMqtt()
+		registerWatches()
+		processMqttEvents() -- kick off mqtt event handling (also drives reconnects)
 	else
 		log_warn("You must set the mqttServerIp and the mqttServerPort for the broker in order for the client to connect..")
-	end
-	
-	if ( connectedToBroker() ) then
-		registerWatches()
-		processMqttEvents() -- kick off the mqtt event handling
 	end
 
         luup.set_failure(false, DEVICE_ID)
