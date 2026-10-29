@@ -38,6 +38,9 @@ local index=1
 local configMonitors = {}
 
 local mqttClient = nil
+-- Forward declaration so connectToMqtt() can call the on-connect republish,
+-- whose definition appears later in the file.
+local republishWatchedVariables
 package.loaded.MQTT = nil
 local MQTT = require("mqtt_library")
 
@@ -128,6 +131,9 @@ local function connectToMqtt()
 		local result = mqttClient:connect(clientId, "Will_Topic/", 2, 1, "testament_msg")
 		if ( result == nil ) then
 			log_info("Successfully connected to broker: " .. mqttServerIp .. " on port " .. mqttServerPort)
+			-- Refresh retained downstream state (e.g. house mode) on every
+			-- (re)connect by republishing the current value of each watched variable.
+			republishWatchedVariables()
 		else
 			log_warn("Failed to connect, reason: " .. result)
 		end
@@ -200,11 +206,11 @@ function processMqttEvents()
 end
 
 -- ------------------------------------------------------------------
--- Callback Watch Configured Sensor Variables (non-local so MIOS can invoke it)
+-- Build and publish the MQTT message for one (device, service, variable)
+-- value. Shared by the variable-watch callback and the on-connect
+-- republish.
 -- ------------------------------------------------------------------
-function watchSensorVariable(lul_device, lul_service, lul_variable, lul_value_old, lul_value_new)
-
-	log_debug("Watch event - device: " .. lul_device .. " variable: " .. lul_variable .. " value " .. tostring(lul_value_old) .. " => " .. tostring(lul_value_new))
+local function publishVariableUpdate(lul_device, lul_service, lul_variable, lul_value_old, lul_value_new)
 
 	local variableUpdate = {}
 	variableUpdate.Time = os.time()
@@ -248,6 +254,17 @@ function watchSensorVariable(lul_device, lul_service, lul_variable, lul_value_ol
 end
 
 -- ------------------------------------------------------------------
+-- Callback Watch Configured Sensor Variables (non-local so MIOS can invoke it)
+-- ------------------------------------------------------------------
+function watchSensorVariable(lul_device, lul_service, lul_variable, lul_value_old, lul_value_new)
+
+	log_debug("Watch event - device: " .. lul_device .. " variable: " .. lul_variable .. " value " .. tostring(lul_value_old) .. " => " .. tostring(lul_value_new))
+
+	publishVariableUpdate(lul_device, lul_service, lul_variable, lul_value_old, lul_value_new)
+
+end
+
+-- ------------------------------------------------------------------
 -- Register the watch variables
 -- ------------------------------------------------------------------
 local function registerWatches()
@@ -264,6 +281,26 @@ local function registerWatches()
 		end
 	end
 
+end
+
+-- ------------------------------------------------------------------
+-- On (re)connect, republish the current value of every watched variable so
+-- retained downstream state (e.g. house mode) self-corrects instead of
+-- staying stale until the next change.
+-- ------------------------------------------------------------------
+function republishWatchedVariables()
+	if ( type(watches) ~= "table" ) then return end
+	for service, variables in pairs(watches) do
+		for varName in pairs(variables) do
+			for deviceId in pairs(luup.devices) do
+				local value = luup.variable_get(service, varName, deviceId)
+				if ( value ~= nil ) then
+					log_info("Republishing " .. tostring(varName) .. "=" .. tostring(value) .. " (device " .. tostring(deviceId) .. ") on (re)connect")
+					publishVariableUpdate(deviceId, service, varName, value, value)
+				end
+			end
+		end
+	end
 end
 
 -- ------------------------------------------------------------------
@@ -348,12 +385,13 @@ function startup(lul_device)
 	end
 
 	if ( mqttServerIp ~= "0.0.0.0" and mqttServerPort ~= "0" ) then
-		-- Attempt the initial connect, but do NOT gate watch registration or the
-		-- event pump on its success.  If the broker is down right now (e.g. a Luup
-		-- reload racing the broker's own startup), connectToMqtt() fails harmlessly
-		-- and processMqttEvents() reconnects on its own once the broker is back.
-		connectToMqtt()
+		-- Register watches BEFORE the initial connect so connect (and every
+		-- reconnect) can republish current values. Neither watch registration
+		-- nor the event pump is gated on the connect succeeding: if
+		-- the broker is down now (e.g. a Luup reload racing the broker's startup),
+		-- connectToMqtt() fails harmlessly and processMqttEvents() reconnects later.
 		registerWatches()
+		connectToMqtt()
 		processMqttEvents() -- kick off mqtt event handling (also drives reconnects)
 	else
 		log_warn("You must set the mqttServerIp and the mqttServerPort for the broker in order for the client to connect..")
