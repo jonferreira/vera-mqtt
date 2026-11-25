@@ -294,7 +294,10 @@ function republishWatchedVariables()
 		for varName in pairs(variables) do
 			for deviceId in pairs(luup.devices) do
 				local value = luup.variable_get(service, varName, deviceId)
-				if ( value ~= nil ) then
+				-- Skip a variable that was never set: devices can carry a watched variable they do not
+				-- use (e.g. an empty EnergyMetering1 Watts on a motion sensor), and an empty value has
+				-- no state to restore. It would also reach the payload as the string "", not a number.
+				if ( value ~= nil and value ~= "" ) then
 					log_info("Republishing " .. tostring(varName) .. "=" .. tostring(value) .. " (device " .. tostring(deviceId) .. ") on (re)connect")
 					publishVariableUpdate(deviceId, service, varName, value, value)
 				end
